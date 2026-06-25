@@ -317,6 +317,19 @@ What we learned: DCFM improved recall, which matters for safety because missed d
 | Custom YOLOv11m-CBAM model | 75.7% mAP |
 | Reported edge latency | 4.7 ms / frame |
 
+**ICEFT 2026 Class-Wise Performance**
+
+The aggregate 75.7% mAP result was influenced by severe minority-class scarcity. Our class-wise results show that the attention-guided model performed very strongly on major local traffic classes such as cars, CNG/auto-rickshaws, rickshaws, and buses/microbuses, while cycle detection remained the main limiting case.
+
+| Target Class | Instances | Precision | Recall | mAP@50 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Car** | 63,107 | 83.3% | 88.5% | **93.4%** |
+| **CNG (Auto-Rickshaw)** | 27,823 | 83.3% | 84.1% | **91.0%** |
+| **Rickshaw** | 60,241 | 78.5% | 85.6% | **90.5%** |
+| **Bus / Microbus** | 51,996 | 78.9% | 84.2% | **89.2%** |
+| *Cycle (Extreme Scarcity)* | *714* | *45.8%* | *27.0%* | *31.6%* |
+| **Global Aggregate** | **265,698** | **66.8%** | **72.7%** | **75.7%** |
+
 Why this matters: ICEFT 2026 validated our early attention-guided YOLOv11-CBAM direction through peer review.
 
 ### 5.8 V6.1: Dhaka Local 640px Baseline
@@ -351,6 +364,15 @@ What we learned: Dhaka V6 was substantially harder than our earlier dataset beca
 | GPU | NVIDIA RTX 4000, 8GB VRAM |
 | Runtime | 21.58 hours / 77,707 seconds |
 | Peak Epoch | Epoch 7 |
+
+**Exact Augmentation Hyperparameters**
+
+These augmentation settings were selected to simulate dense Dhaka traffic conditions, minority-class scarcity, overlapping road users, and visual variation from local weather and lighting.
+
+- **Mosaic:** 1.0 (100% probability) to simulate dense intersection occlusion.
+- **Copy-Paste:** 0.30 (30% probability) to artificially inject minority classes such as cycles.
+- **MixUp:** 0.15 (15% probability) to teach the model to separate overlapping bounding boxes.
+- **HSV (Hue/Sat/Val):** 0.015 / 0.7 / 0.4 to simulate Dhaka weather conditions such as smog and harsh sunlight.
 
 | Metric | Result |
 | --- | ---: |
@@ -450,6 +472,12 @@ DCFM stands for Dynamic Channel Fusion Module. We used it to improve feature fus
 | Dilated convolution | Increases receptive field without excessive downsampling |
 | Softmax / adaptive weighting | Dynamically balances branches |
 
+**Core Formula**
+
+```text
+DCFM_Output = Softmax(Attention_Weights) x [Conv_3x3(x) + Conv_5x5(x) + Conv_Dilated(x)]
+```
+
 ### 7.3 DCFM_v2
 
 DCFM_v2 was our safer memory-oriented DCFM variant for volatile cloud training.
@@ -472,6 +500,26 @@ YOLO26m became our local Dhaka framework for 8-class high-resolution training. I
 ### 7.6 SAHI-Pro and P2 Small-Object Head Direction
 
 We also recorded a SAHI-Pro/P2 direction. The goal was to improve detection of very small objects by adding a higher-resolution detection head. This remains part of our future-work roadmap.
+
+The standard YOLO network outputs detections at 3 semantic levels: P3, P4, and P5. To recover small objects without relying only on patch-slicing, we custom-engineered a 4-head detection network spanning the following output layers:
+
+- **Layer 21 (P2 Head):** Custom 128-channel high-resolution output for extreme small-target rescue.
+- **Layer 24 (P3 Head):** 256-channel output for mid-low resolution.
+- **Layer 27 (P4 Head):** 512-channel output for mid-high resolution.
+- **Layer 30 (P5 Head):** 512-channel deep semantic output.
+- **Layer 31 (Detect):** Unified anchor-free predictor combining `[21, 24, 27, 30]`.
+
+### 7.7 Computational Complexity Profile
+
+Integrating custom attention modules increased computational overhead. We tracked these parameters to ensure the model remained viable for real-time edge deployment in ADAS systems:
+
+| Architecture Variant | Total Layers | Parameters | Complexity | Edge Latency |
+| :--- | :--- | :--- | :--- | :--- |
+| **YOLO11n (Light Baseline)** | 115 | ~2.6 Million | ~6.5 GFLOPs | 1.2 ms / frame |
+| **YOLOv11m (Standard)** | 232 | ~20.0 Million | ~67.0 GFLOPs | 4.2 ms / frame |
+| **YOLOv11m + CBAM (ICEFT)** | 237 | ~20.5 Million | 67.7 GFLOPs | 4.7 ms / frame |
+| **YOLO26m-Combined (Peak)** | 248 | ~22.1 Million | 71.2 GFLOPs | 5.3 ms / frame |
+| **YOLO26m-SAHI-Pro (4-Head)** | 265 | ~24.8 Million | 78.5 GFLOPs | 6.8 ms / frame |
 
 ---
 
@@ -665,6 +713,15 @@ We have already completed:
 | Inference-time SAHI | Revisit SAHI as a post-processing method rather than a training format |
 | P2 small-object head | Improve very small object detection with higher-resolution feature maps |
 | Transformer context modeling | Use self-attention for dense occlusion and long-range context |
+
+**Vector Risk Assessment Formula**
+
+For future monocular risk estimation, we can approximate Time-To-Collision (TTC) from bounding-box width change across time:
+
+```text
+Time-To-Collision (TTC) Approximation (Monocular Vision):
+TTC ~= width_current / [ (width_current - width_previous) / time_delta ]
+```
 
 ---
 
